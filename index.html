@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kastbouwer - ThuysVers</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f1ea; --ink:#2b2b2b; --line:#3a3a3a; --panel:#c9bda6;
+    --panel2:#b8ab93; --open:#fbf8f1; --accent:#3f6b4f; --accent2:#1f3b57;
+    --muted:#7a7468; --danger:#a23b2d; --app:#dfe4ea;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}
+  header{padding:16px 20px;border-bottom:2px solid var(--line);display:flex;
+    align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
+  h1 span{color:var(--muted);font-weight:400;font-size:14px}
+  .wrap{display:grid;grid-template-columns:320px 1fr;gap:0;min-height:calc(100vh - 64px)}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .side{border-right:2px solid var(--line);padding:16px;overflow-y:auto;max-height:calc(100vh - 64px)}
+  @media(max-width:900px){.side{border-right:none;border-bottom:2px solid var(--line);max-height:none}}
+  .stage{padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .card{background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px;color:var(--accent2)}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px}
+  input[type=number],input[type=text],select{width:100%;padding:7px 8px;
+    border:1.5px solid #c7bca5;border-radius:6px;font-size:14px;background:#fff;color:var(--ink)}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  button{cursor:pointer;border:1.5px solid var(--line);background:#fff;color:var(--ink);
+    padding:8px 10px;border-radius:6px;font-size:13px;font-weight:600;transition:.12s}
+  button:hover{background:#efeadf}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.primary:hover{background:#345a42}
+  button.danger{color:var(--danger);border-color:#d8b8b2}
+  button.danger:hover{background:#f6e9e6}
+  button.ghost{background:transparent}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .btnrow button{flex:1;min-width:0}
+  svg{background:var(--open);border:1px solid #ddd5c4;border-radius:6px;max-width:100%;height:auto}
+  .legend{font-size:12px;color:var(--muted);text-align:center;max-width:680px}
+  .rowcols{margin-top:6px}
+  .seg{border:1.5px solid #d8cfbb;border-radius:6px;padding:8px;margin-bottom:8px;background:#faf7f0}
+  .seg .seghead{display:flex;justify-content:space-between;align-items:center;font-size:12px;
+    font-weight:700;color:var(--accent2);margin-bottom:6px}
+  .pill{display:inline-block;padding:2px 7px;border-radius:20px;background:#e7e0d0;font-size:11px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:5px 6px;border-bottom:1px solid #e4ddcd}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .tot{font-weight:700}
+  .status{font-size:12px;padding:6px 8px;border-radius:6px;margin-top:6px}
+  .status.ok{background:#e6f0e9;color:#2c5238}
+  .status.warn{background:#f6efe2;color:#8a6d2f}
+  .status.err{background:#f6e9e6;color:var(--danger)}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px}
+  .selrow{cursor:pointer}
+  .selrow.active{background:#eef3ec;outline:2px solid var(--accent)}
+  details{margin-top:6px}
+  summary{cursor:pointer;font-size:12px;color:var(--accent2);font-weight:600}
+  .kv{display:flex;justify-content:space-between;font-size:13px;padding:2px 0}
+  .save-state{font-size:11px;color:var(--muted)}
+  .tabbar{display:flex;gap:4px;margin-bottom:10px}
+  .tabbar button{flex:1;border-radius:6px 6px 0 0}
+  .tabbar button.active{background:var(--accent2);color:#fff;border-color:var(--accent2)}
+  .tabpane{display:none}.tabpane.active{display:block}
+</style>
+</head>
+<body>
+<header>
+  <h1>Kastbouwer <span>&nbsp;OSB op maat</span></h1>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <select id="designPicker" style="width:auto;min-width:160px"></select>
+    <button id="btnNew">Nieuw</button>
+    <button id="btnSave" class="primary">Opslaan</button>
+    <span id="saveState" class="save-state"></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside class="side">
+    <div class="tabbar">
+      <button data-tab="build" class="active">Bouwen</button>
+      <button data-tab="cut">Zaaglijst</button>
+    </div>
+
+    <!-- BUILD TAB -->
+    <div class="tabpane active" id="tab-build">
+      <div class="card">
+        <h2>Startvarianten</h2>
+        <div class="hint">Eén klik laadt een indeling. Daarna kun je alles vrij aanpassen. Buitenmaat blijft staan.</div>
+        <div id="variantBtns" class="btnrow" style="flex-direction:column"></div>
+        <details style="margin-top:10px">
+          <summary>Eigen sjablonen</summary>
+          <div id="customBtns" class="btnrow" style="flex-direction:column;margin-top:8px"></div>
+          <button id="saveTemplate" class="ghost" style="width:100%;margin-top:8px">+ Huidige indeling als sjabloon bewaren</button>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Afmetingen kast (cm)</h2>
+        <div class="row">
+          <div><label>Breedte</label><input type="number" id="W" value="244" step="0.1"></div>
+          <div><label>Hoogte</label><input type="number" id="H" value="223" step="0.1"></div>
+        </div>
+        <div class="row">
+          <div><label>Diepte</label><input type="number" id="D" value="63" step="0.1"></div>
+          <div><label>Plaatdikte</label><input type="number" id="T" value="1.8" step="0.1"></div>
+        </div>
+        <label>Sokkelhoogte</label><input type="number" id="SOK" value="8" step="0.1">
+      </div>
+
+      <div class="card">
+        <h2>Rijen (van onder naar boven)</h2>
+        <div class="hint">Een rij is een horizontale band. Geef de hoogte; vakken vul je per rij met kolommen. Klik een rij om te bewerken.</div>
+        <div id="rows" class="rowcols"></div>
+        <div class="btnrow">
+          <button id="addRow">+ Rij toevoegen</button>
+        </div>
+      </div>
+
+      <div class="card" id="rowEditor" style="display:none">
+        <h2>Rij bewerken</h2>
+        <label>Hoogte van deze rij (cm)</label>
+        <input type="number" id="rowH" step="0.1">
+        <div class="hint">Apparaatvakken hebben min. ~87 hoog nodig voor een 85cm apparaat.</div>
+        <label style="margin-top:10px">Kolommen in deze rij</label>
+        <div id="cols"></div>
+        <div class="btnrow">
+          <button id="addCol">+ Kolom</button>
+          <button id="delRow" class="danger">Rij verwijderen</button>
+        </div>
+        <div class="hint" style="margin-top:8px">Tip: zet kolombreedte op 0 = "rest" (verdeelt automatisch de overige ruimte).</div>
+      </div>
+    </div>
+
+    <!-- CUT TAB -->
+    <div class="tabpane" id="tab-cut">
+      <div class="card">
+        <h2>Materiaal & prijs</h2>
+        <div class="row">
+          <div><label>OSB plaat breedte</label><input type="number" id="sheetW" value="250" step="1"></div>
+          <div><label>plaat hoogte</label><input type="number" id="sheetH" value="125" step="1"></div>
+        </div>
+        <label>Prijs per plaat (€)</label><input type="number" id="sheetPrice" value="22" step="0.5">
+        <div class="hint">Standaard OSB-3 plaat is vaak 250×125 cm. Pas aan naar jouw bouwmarkt (HORNBACH etc.).</div>
+      </div>
+      <div class="card">
+        <h2>Zaaglijst</h2>
+        <div id="cutlist"></div>
+      </div>
+      <div class="card">
+        <h2>Materiaal & kosten</h2>
+        <div id="costbox"></div>
+      </div>
+      <button id="btnCsv" class="ghost" style="width:100%">Zaaglijst als CSV downloaden</button>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <svg id="svg" width="700" height="640" viewBox="0 0 700 640"></svg>
+    <div class="legend" id="legend"></div>
+    <div id="warnings" style="max-width:680px;width:100%"></div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG - vul je Supabase gegevens hier in
+   ============================================================ */
+const SUPABASE_URL = "JOUW_SUPABASE_URL";      // bv https://xxxx.supabase.co
+const SUPABASE_ANON_KEY = "JOUW_SUPABASE_ANON_KEY";
+
+let sb = null;
+let supaOK = false;
+try {
+  if (SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20) {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supaOK = true;
+  }
+} catch(e){ supaOK = false; }
+
+/* ============================================================
+   MODEL
+   ============================================================ */
+function defaultModel(){
+  return {
+    name: "Mijn kast",
+    W: 244, H: 223, D: 63, T: 1.8, SOK: 8,
+    sheetW: 250, sheetH: 125, sheetPrice: 22,
+    // rows from bottom to top. each row: {h, cols:[{w, type, label}]}
+    // w=0 means "fill remaining"
+    rows: [
+      { h: 87, cols: [
+        { w: 36, type:"vakken", rows:3, label:"" },
+        { w: 36, type:"vakken", rows:3, label:"" },
+        { w: 36, type:"vakken", rows:3, label:"" },
+        { w: 62.5, type:"apparaat", label:"Wasmachine" },
+        { w: 62.5, type:"apparaat", label:"Vriezer" }
+      ]},
+      { h: 0, cols: [
+        { w:0, type:"open", label:"" },
+        { w:0, type:"open", label:"" },
+        { w:0, type:"open", label:"" },
+        { w:0, type:"deur", label:"" }
+      ]}
+    ]
+  };
+}
+
+/* Startvarianten - elk geeft een verse indeling met dezelfde buitenmaat.
+   base() houdt de huidige buitenmaat/dikte aan zodat varianten passen op de ingestelde kast. */
+function base(){ return { W:M.W, H:M.H, D:M.D, T:M.T, SOK:M.SOK,
+  sheetW:M.sheetW, sheetH:M.sheetH, sheetPrice:M.sheetPrice }; }
+
+const VARIANTS = {
+  "Apparaten rechts": ()=>({ ...base(), name:"Apparaten rechts",
+    rows:[
+      { h:87, cols:[
+        {w:36,type:"vakken",rows:3,label:""},
+        {w:36,type:"vakken",rows:3,label:""},
+        {w:36,type:"vakken",rows:3,label:""},
+        {w:62.5,type:"apparaat",label:"Wasmachine"},
+        {w:62.5,type:"apparaat",label:"Vriezer"}
+      ]},
+      { h:0, cols:[ {w:0,type:"deur"},{w:0,type:"deur"},{w:0,type:"deur"},{w:0,type:"deur"} ]}
+    ]}),
+  "Apparaten links": ()=>({ ...base(), name:"Apparaten links",
+    rows:[
+      { h:87, cols:[
+        {w:62.5,type:"apparaat",label:"Wasmachine"},
+        {w:62.5,type:"apparaat",label:"Vriezer"},
+        {w:36,type:"vakken",rows:3,label:""},
+        {w:36,type:"vakken",rows:3,label:""},
+        {w:36,type:"vakken",rows:3,label:""}
+      ]},
+      { h:0, cols:[ {w:0,type:"deur"},{w:0,type:"deur"},{w:0,type:"deur"},{w:0,type:"deur"} ]}
+    ]}),
+  "Apparaten in het midden": ()=>({ ...base(), name:"Apparaten in het midden",
+    rows:[
+      { h:87, cols:[
+        {w:0,type:"vakken",rows:3,label:""},
+        {w:62.5,type:"apparaat",label:"Wasmachine"},
+        {w:62.5,type:"apparaat",label:"Vriezer"},
+        {w:0,type:"vakken",rows:3,label:""}
+      ]},
+      { h:0, cols:[ {w:0,type:"deur"},{w:0,type:"deur"},{w:0,type:"deur"} ]}
+    ]}),
+  "Apparaten + open kast boven": ()=>({ ...base(), name:"Apparaten + open kast boven",
+    rows:[
+      { h:87, cols:[
+        {w:0,type:"vakken",rows:2,label:""},
+        {w:62.5,type:"apparaat",label:"Wasmachine"},
+        {w:62.5,type:"apparaat",label:"Vriezer"}
+      ]},
+      { h:0, cols:[ {w:0,type:"open"},{w:0,type:"open"},{w:0,type:"open"} ]},
+      { h:42, cols:[ {w:0,type:"deur"},{w:0,type:"deur"},{w:0,type:"deur"},{w:0,type:"deur"} ]}
+    ]}),
+  "Twee bovenkasten met deuren": ()=>({ ...base(), name:"Twee bovenkasten met deuren",
+    rows:[
+      { h:87, cols:[
+        {w:55,type:"vakken",rows:3,label:""},
+        {w:62.5,type:"apparaat",label:"Wasmachine"},
+        {w:62.5,type:"apparaat",label:"Vriezer"}
+      ]},
+      { h:0, cols:[ {w:0,type:"deur"},{w:0,type:"deur"} ]},
+      { h:38, cols:[ {w:0,type:"open"},{w:0,type:"open"},{w:0,type:"open"},{w:0,type:"open"},{w:0,type:"open"} ]}
+    ]})
+};
+
+let M = defaultModel();
+let selRow = 0;
+let designs = [];        // {id,name}
+let currentId = null;
+let dirty = false;
+
+/* ============================================================
+   GEOMETRY / LAYOUT
+   ============================================================ */
+function fixedRowsHeight(){
+  // sum of rows with h>0
+  return M.rows.reduce((s,r)=> s + (r.h>0? r.h:0), 0);
+}
+function flexRowCount(){ return M.rows.filter(r=>!(r.h>0)).length; }
+
+function resolvedRowHeights(){
+  const inner = M.H - 2*M.T - M.SOK;
+  const fixed = fixedRowsHeight();
+  const flex = flexRowCount();
+  const rest = Math.max(0, inner - fixed - (M.rows.length-1)*M.T);
+  const each = flex>0 ? rest/flex : 0;
+  return M.rows.map(r => (r.h>0? r.h : each));
+}
+
+function resolvedColWidths(row){
+  const inner = M.W - 2*M.T;
+  const n = row.cols.length;
+  const gaps = (n-1)*M.T;
+  let fixed=0, flex=0;
+  row.cols.forEach(c=> c.w>0 ? fixed+=c.w : flex++);
+  const rest = Math.max(0, inner - gaps - fixed);
+  const each = flex>0 ? rest/flex : 0;
+  return row.cols.map(c => c.w>0? c.w : each);
+}
+
+/* ============================================================
+   RENDER SVG (scale drawing)
+   ============================================================ */
+function render(){
+  const svg = document.getElementById("svg");
+  const pad = 46;
+  const maxW = 660, maxH = 560;
+  const scale = Math.min((maxW)/M.W, (maxH)/M.H);
+  const ox = pad, oy = pad;
+  const sx = v => ox + v*scale;
+  const syTop = v => oy + (M.H - v)*scale; // y from bottom
+  svg.setAttribute("viewBox", `0 0 ${M.W*scale + pad*2} ${M.H*scale + pad*2}`);
+  svg.setAttribute("width", M.W*scale + pad*2);
+  svg.setAttribute("height", M.H*scale + pad*2);
+
+  const NS="http://www.w3.org/2000/svg";
+  let out = "";
+  const rect=(x,y,w,h,fill,extra="")=>`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0,w).toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" fill="${fill}" stroke="#3a3a3a" stroke-width="1.2" ${extra}/>`;
+  const txt=(x,y,s,o="")=>`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="11" fill="#33414f" text-anchor="middle" ${o}>${s}</text>`;
+
+  // outer carcass
+  out += rect(sx(0), syTop(M.H), M.W*scale, M.H*scale, "#c9bda6");
+  // inner cavity
+  out += rect(sx(M.T), syTop(M.H-M.T), (M.W-2*M.T)*scale, (M.H-2*M.T)*scale, "#fbf8f1");
+  // sokkel
+  out += rect(sx(M.T), syTop(M.SOK), (M.W-2*M.T)*scale, M.SOK*scale, "#b8ab93");
+
+  const heights = resolvedRowHeights();
+  let yb = M.SOK; // bottom of current row (cm from floor)
+  for(let ri=0; ri<M.rows.length; ri++){
+    const row = M.rows[ri];
+    const rh = heights[ri];
+    const widths = resolvedColWidths(row);
+    let xc = M.T;
+    // selected row highlight
+    if(ri===selRow){
+      out += `<rect x="${sx(M.T).toFixed(1)}" y="${syTop(yb+rh).toFixed(1)}" width="${((M.W-2*M.T)*scale).toFixed(1)}" height="${(rh*scale).toFixed(1)}" fill="#3f6b4f" opacity="0.06"/>`;
+    }
+    for(let ci=0; ci<row.cols.length; ci++){
+      const c = row.cols[ci];
+      const cw = widths[ci];
+      const x0 = sx(xc), y0 = syTop(yb+rh);
+      const wpx = cw*scale, hpx = rh*scale;
+      if(c.type==="apparaat"){
+        out += rect(x0,y0,wpx,hpx,"#fbf8f1");
+        const m=(cw-60)/2;
+        const ax = sx(xc + Math.max(0,m)), aw = Math.min(cw,60)*scale;
+        out += rect(ax, syTop(yb+rh-2), aw, (rh-6)*scale, "#eceff3");
+        const cxp = sx(xc+cw/2), cyp = syTop(yb+(rh)/2);
+        const rr = Math.min(wpx,hpx)*0.22;
+        out += `<circle cx="${cxp.toFixed(1)}" cy="${cyp.toFixed(1)}" r="${rr.toFixed(1)}" fill="#dfe4ea" stroke="#8a8a8a"/>`;
+        out += `<circle cx="${cxp.toFixed(1)}" cy="${cyp.toFixed(1)}" r="${(rr*0.7).toFixed(1)}" fill="#cfd6df" stroke="#9aa3ad"/>`;
+        out += txt(cxp, y0+13, c.label||"Apparaat", `font-weight="700"`);
+      } else if(c.type==="vakken"){
+        const sub = Math.max(1, c.rows||1);
+        const subH = (rh - (sub-1)*M.T)/sub;
+        let yy = yb;
+        for(let s=0;s<sub;s++){
+          out += rect(sx(xc), syTop(yy+subH), wpx, subH*scale, "#fbf8f1");
+          yy += subH;
+          if(s<sub-1){ out += rect(sx(xc), syTop(yy+M.T), wpx, M.T*scale, "#c9bda6"); yy+=M.T; }
+        }
+        if(c.label) out += txt(sx(xc+cw/2), y0+13, c.label);
+      } else if(c.type==="deur"){
+        out += rect(x0,y0,wpx,hpx,"#fbf8f1");
+        const kx = sx(xc+cw)-7, ky = syTop(yb+rh/2);
+        out += `<circle cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="2.4" fill="none" stroke="#444"/>`;
+        if(c.label) out += txt(sx(xc+cw/2), y0+13, c.label);
+      } else { // open
+        out += rect(x0,y0,wpx,hpx,"#fbf8f1");
+        if(c.label) out += txt(sx(xc+cw/2), y0+13, c.label);
+      }
+      xc += cw;
+      if(ci<row.cols.length-1){
+        out += rect(sx(xc), syTop(yb+rh), M.T*scale, rh*scale, "#c9bda6"); // divider
+        xc += M.T;
+      }
+    }
+    yb += rh;
+    if(ri<M.rows.length-1){
+      out += rect(sx(M.T), syTop(yb+M.T), (M.W-2*M.T)*scale, M.T*scale, "#c9bda6"); // shelf
+      yb += M.T;
+    }
+  }
+
+  // dimensions
+  const dimY = oy - 14;
+  out += `<line x1="${sx(0)}" y1="${dimY}" x2="${sx(M.W)}" y2="${dimY}" stroke="#1f3b57"/>`;
+  out += txt((sx(0)+sx(M.W))/2, dimY-4, M.W.toFixed(1).replace(".",",")+" cm", `fill="#1f3b57"`);
+  const dimX = sx(M.W)+16;
+  out += `<line x1="${dimX}" y1="${syTop(0)}" x2="${dimX}" y2="${syTop(M.H)}" stroke="#1f3b57"/>`;
+  out += `<text x="${dimX+4}" y="${(syTop(0)+syTop(M.H))/2}" font-size="11" fill="#1f3b57" transform="rotate(90 ${dimX+4} ${(syTop(0)+syTop(M.H))/2})" text-anchor="middle">${M.H.toFixed(1).replace(".",",")} cm</text>`;
+
+  svg.innerHTML = out;
+
+  document.getElementById("legend").textContent =
+    `Schaal 1:${(1/scale).toFixed(1)} · buitenmaat ${M.W}×${M.H}×${M.D} cm · OSB ${M.T*10} mm · klik een rij links om te bewerken`;
+
+  renderWarnings();
+}
+
+function renderWarnings(){
+  const box = document.getElementById("warnings");
+  let msgs = [];
+  // appliance height check
+  const heights = resolvedRowHeights();
+  M.rows.forEach((r,ri)=>{
+    const hasApp = r.cols.some(c=>c.type==="apparaat");
+    if(hasApp && heights[ri] < 86){
+      msgs.push(["warn",`Rij ${ri+1} is ${heights[ri].toFixed(1)} cm hoog. Voor een 85 cm apparaat wil je min. 86-87 cm.`]);
+    }
+    r.cols.forEach(c=>{
+      if(c.type==="apparaat" && c.w < 62){
+        msgs.push(["warn",`Apparaatvak "${c.label||""}" is ${c.w} cm. Voor een 60 cm apparaat is 62-63 cm aan te raden.`]);
+      }
+    });
+    // overflow check
+    const inner = M.W - 2*M.T;
+    const used = r.cols.reduce((s,c)=>s+(c.w>0?c.w:0),0) + (r.cols.length-1)*M.T;
+    if(used > inner+0.1 && r.cols.every(c=>c.w>0)){
+      msgs.push(["err",`Rij ${ri+1}: kolommen samen ${used.toFixed(1)} cm, breder dan binnenmaat ${inner.toFixed(1)} cm.`]);
+    }
+  });
+  const innerH = M.H-2*M.T-M.SOK;
+  const fixedH = fixedRowsHeight() + (M.rows.length-1)*M.T;
+  if(flexRowCount()===0 && fixedH > innerH+0.1){
+    msgs.push(["err",`Rijen samen ${fixedH.toFixed(1)} cm hoog, meer dan beschikbaar ${innerH.toFixed(1)} cm.`]);
+  }
+  if(msgs.length===0) msgs.push(["ok","Maten kloppen. Klaar om te zagen."]);
+  box.innerHTML = msgs.map(([k,t])=>`<div class="status ${k}">${t}</div>`).join("");
+}
+
+/* ============================================================
+   SIDEBAR UI
+   ============================================================ */
+function syncDimsToInputs(){
+  ["W","H","D","T","SOK","sheetW","sheetH","sheetPrice"].forEach(k=>{
+    const el=document.getElementById(k); if(el) el.value=M[k];
+  });
+}
+function bindDims(){
+  ["W","H","D","T","SOK","sheetW","sheetH","sheetPrice"].forEach(k=>{
+    document.getElementById(k).addEventListener("input",e=>{
+      M[k]=parseFloat(e.target.value)||0; markDirty(); render(); renderRows(); renderCut();
+    });
+  });
+}
+
+function renderRows(){
+  const host = document.getElementById("rows");
+  const heights = resolvedRowHeights();
+  host.innerHTML = "";
+  // show top-to-bottom for intuitive reading
+  for(let ri=M.rows.length-1; ri>=0; ri--){
+    const r = M.rows[ri];
+    const div = document.createElement("div");
+    div.className = "seg selrow" + (ri===selRow?" active":"");
+    const htxt = r.h>0 ? r.h.toFixed(1)+" cm" : "rest ("+heights[ri].toFixed(1)+")";
+    const types = r.cols.map(c=>c.type==="apparaat"?"A":c.type==="vakken"?"V":c.type==="deur"?"D":"O").join(" ");
+    div.innerHTML = `<div class="seghead"><span>Rij ${ri+1}</span><span class="pill">${htxt}</span></div>
+      <div style="font-size:12px;color:#7a7468">${r.cols.length} kolommen &nbsp; <span style="letter-spacing:2px">${types}</span></div>`;
+    div.onclick = ()=>{ selRow=ri; renderRows(); renderRowEditor(); render(); };
+    host.appendChild(div);
+  }
+  renderRowEditor();
+}
+
+function renderRowEditor(){
+  const ed = document.getElementById("rowEditor");
+  if(selRow==null || !M.rows[selRow]){ ed.style.display="none"; return; }
+  ed.style.display="block";
+  const r = M.rows[selRow];
+  document.getElementById("rowH").value = r.h;
+  const cols = document.getElementById("cols");
+  cols.innerHTML = "";
+  r.cols.forEach((c,ci)=>{
+    const wrap=document.createElement("div");
+    wrap.className="seg";
+    wrap.innerHTML = `
+      <div class="seghead"><span>Kolom ${ci+1}</span>
+        <button class="danger ghost" style="padding:2px 7px" data-del="${ci}">×</button></div>
+      <label>Type</label>
+      <select data-k="type" data-ci="${ci}">
+        <option value="open">Open vak</option>
+        <option value="vakken">Vakkenkast (meerdere planken)</option>
+        <option value="deur">Vak met deur</option>
+        <option value="apparaat">Apparaatvak</option>
+      </select>
+      <div class="row">
+        <div><label>Breedte (0=rest)</label><input type="number" step="0.1" data-k="w" data-ci="${ci}" value="${c.w}"></div>
+        <div data-sub style="${c.type==='vakken'?'':'visibility:hidden'}"><label>Planken (rijen)</label><input type="number" step="1" min="1" data-k="rows" data-ci="${ci}" value="${c.rows||1}"></div>
+      </div>
+      <label>Label (optioneel)</label><input type="text" data-k="label" data-ci="${ci}" value="${c.label||""}">`;
+    cols.appendChild(wrap);
+    wrap.querySelector(`[data-k=type]`).value = c.type;
+  });
+  cols.querySelectorAll("select,input").forEach(el=>{
+    el.addEventListener("input",e=>{
+      const ci=+e.target.dataset.ci, k=e.target.dataset.k;
+      let v=e.target.value;
+      if(k==="w"||k==="rows") v=parseFloat(v)||0;
+      M.rows[selRow].cols[ci][k]=v;
+      markDirty(); render(); renderRows(); renderCut();
+    });
+  });
+  cols.querySelectorAll("[data-del]").forEach(b=>{
+    b.addEventListener("click",e=>{
+      const ci=+e.target.dataset.del;
+      M.rows[selRow].cols.splice(ci,1);
+      markDirty(); render(); renderRows(); renderRowEditor(); renderCut();
+    });
+  });
+  document.getElementById("rowH").oninput = e=>{
+    M.rows[selRow].h = parseFloat(e.target.value)||0; markDirty(); render(); renderRows(); renderCut();
+  };
+}
+
+/* ============================================================
+   CUTLIST + COST
+   ============================================================ */
+function computeCutlist(){
+  const parts = []; // {name, w, h, qty}
+  const add=(name,w,h,qty=1)=>parts.push({name,w:+w.toFixed(1),h:+h.toFixed(1),qty});
+  const innerW = M.W-2*M.T, innerH = M.H-2*M.T;
+  // carcass
+  add("Zijwand", M.D, M.H, 2);
+  add("Boven/onder", innerW, M.D, 2);
+  add("Achterwand (optioneel)", innerW, innerH, 1);
+  add("Sokkel front", innerW, M.SOK, 1);
+  // shelves between rows
+  const nShelfBetween = M.rows.length-1;
+  if(nShelfBetween>0) add("Legbord tussen rijen", innerW, M.D, nShelfBetween);
+  // per row: vertical dividers + sub shelves
+  const heights = resolvedRowHeights();
+  M.rows.forEach((r,ri)=>{
+    const rh = heights[ri];
+    const nDiv = r.cols.length-1;
+    if(nDiv>0) add(`Tussenschot rij ${ri+1}`, M.D, rh, nDiv);
+    const widths = resolvedColWidths(r);
+    r.cols.forEach((c,ci)=>{
+      if(c.type==="vakken" && (c.rows||1)>1){
+        add(`Legplank rij ${ri+1} kol ${ci+1}`, widths[ci], M.D, (c.rows-1));
+      }
+    });
+  });
+  return parts;
+}
+
+function renderCut(){
+  const parts = computeCutlist();
+  let rows = parts.map(p=>`<tr><td>${p.name}</td><td class="num">${p.w}</td><td class="num">${p.h}</td><td class="num">${p.qty}</td></tr>`).join("");
+  document.getElementById("cutlist").innerHTML =
+    `<table><thead><tr><th>Onderdeel</th><th class="num">B</th><th class="num">H</th><th class="num">Aantal</th></tr></thead><tbody>${rows}</tbody></table>
+     <div class="hint">Maten in cm. B×H per stuk. Diepte ${M.D} cm. Houd rekening met zaagverlies.</div>`;
+
+  // area + sheets (simple area-based estimate with 15% waste)
+  let area=0;
+  parts.forEach(p=> area += (p.w*p.h*p.qty)/10000); // m2
+  const sheetArea = (M.sheetW*M.sheetH)/10000;
+  const withWaste = area*1.15;
+  const sheets = Math.ceil(withWaste/sheetArea);
+  const cost = sheets*M.sheetPrice;
+  document.getElementById("costbox").innerHTML = `
+    <div class="kv"><span>Netto plaatoppervlak</span><b>${area.toFixed(2)} m²</b></div>
+    <div class="kv"><span>Incl. 15% zaagverlies</span><b>${withWaste.toFixed(2)} m²</b></div>
+    <div class="kv"><span>Plaat ${M.sheetW}×${M.sheetH} = ${sheetArea.toFixed(2)} m²</span><b></b></div>
+    <div class="kv tot"><span>Platen nodig</span><b>${sheets} st</b></div>
+    <div class="kv tot"><span>Ruwe kosten OSB</span><b>€ ${cost.toFixed(2)}</b></div>
+    <div class="hint">Schatting op basis van oppervlak, niet van echte plaatindeling (nesting). Werkelijk aantal kan 1 plaat afwijken.</div>`;
+}
+
+function downloadCsv(){
+  const parts = computeCutlist();
+  let csv = "Onderdeel;Breedte_cm;Hoogte_cm;Aantal\n";
+  parts.forEach(p=> csv += `${p.name};${p.w};${p.h};${p.qty}\n`);
+  const blob = new Blob([csv],{type:"text/csv"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`zaaglijst_${(M.name||"kast").replace(/\s+/g,"_")}.csv`;
+  a.click();
+}
+
+/* ============================================================
+   SUPABASE STORAGE
+   ============================================================ */
+function setSaveState(t){ document.getElementById("saveState").textContent=t; }
+function markDirty(){ dirty=true; setSaveState("niet opgeslagen"); }
+
+async function loadDesignList(){
+  const picker=document.getElementById("designPicker");
+  if(!supaOK){ picker.innerHTML=`<option>Supabase niet ingesteld</option>`; setSaveState("offline"); return; }
+  const {data,error}=await sb.from("kast_ontwerpen").select("id,name").order("updated_at",{ascending:false});
+  if(error){ setSaveState("laden mislukt"); return; }
+  designs=data||[];
+  picker.innerHTML = designs.map(d=>`<option value="${d.id}">${d.name}</option>`).join("") || `<option value="">(geen ontwerpen)</option>`;
+  if(designs.length){ picker.value=designs[0].id; await loadDesign(designs[0].id); }
+}
+
+async function loadDesign(id){
+  if(!supaOK) return;
+  const {data,error}=await sb.from("kast_ontwerpen").select("*").eq("id",id).single();
+  if(error||!data){ return; }
+  M = data.data; currentId=data.id; dirty=false;
+  selRow = M.rows.length?0:null;
+  syncDimsToInputs(); render(); renderRows(); renderCut();
+  setSaveState("opgeslagen");
+}
+
+async function saveDesign(){
+  if(!supaOK){ alert("Supabase is niet ingesteld. Vul SUPABASE_URL en SUPABASE_ANON_KEY in bovenin het bestand."); return; }
+  setSaveState("opslaan...");
+  const payload={ name:M.name||"Mijn kast", data:M, updated_at:new Date().toISOString() };
+  let res;
+  if(currentId){ res=await sb.from("kast_ontwerpen").update(payload).eq("id",currentId).select().single(); }
+  else { res=await sb.from("kast_ontwerpen").insert(payload).select().single(); }
+  if(res.error){ setSaveState("fout: "+res.error.message); return; }
+  currentId=res.data.id; dirty=false; setSaveState("opgeslagen "+new Date().toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}));
+  await loadDesignList();
+  document.getElementById("designPicker").value=currentId;
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+document.querySelectorAll(".tabbar button").forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll(".tabbar button").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    document.getElementById("tab-"+b.dataset.tab).classList.add("active");
+    if(b.dataset.tab==="cut") renderCut();
+  };
+});
+document.getElementById("addRow").onclick=()=>{
+  M.rows.push({h:40,cols:[{w:0,type:"open",label:""}]});
+  selRow=M.rows.length-1; markDirty(); render(); renderRows(); renderCut();
+};
+document.getElementById("addCol").onclick=()=>{
+  if(selRow==null) return;
+  M.rows[selRow].cols.push({w:0,type:"open",label:""});
+  markDirty(); render(); renderRows(); renderRowEditor(); renderCut();
+};
+document.getElementById("delRow").onclick=()=>{
+  if(selRow==null) return;
+  M.rows.splice(selRow,1);
+  selRow=M.rows.length?Math.max(0,selRow-1):null;
+  markDirty(); render(); renderRows(); renderCut();
+};
+document.getElementById("btnSave").onclick=saveDesign;
+document.getElementById("btnNew").onclick=()=>{
+  const nm=prompt("Naam voor nieuw ontwerp:","Nieuwe kast");
+  if(nm===null) return;
+  M=defaultModel(); M.name=nm; currentId=null; selRow=0;
+  syncDimsToInputs(); render(); renderRows(); renderCut(); markDirty();
+};
+document.getElementById("designPicker").onchange=e=>{ if(e.target.value) loadDesign(e.target.value); };
+document.getElementById("btnCsv").onclick=downloadCsv;
+
+/* ============================================================
+   VARIANTEN
+   ============================================================ */
+function renderVariantButtons(){
+  const host=document.getElementById("variantBtns");
+  host.innerHTML="";
+  Object.keys(VARIANTS).forEach(name=>{
+    const b=document.createElement("button");
+    b.textContent=name;
+    b.onclick=()=>applyVariant(name);
+    host.appendChild(b);
+  });
+}
+function applyVariant(name){
+  const keepName = M.name;
+  const v = VARIANTS[name]();
+  M = v;
+  // behoud de naam van het ontwerp als die al bestond, anders variantnaam
+  if(keepName && currentId) M.name = keepName;
+  selRow = M.rows.length?0:null;
+  syncDimsToInputs(); render(); renderRows(); renderCut(); markDirty();
+}
+
+let customTemplates = []; // {id,name,data}
+
+async function loadTemplates(){
+  const host=document.getElementById("customBtns");
+  if(!supaOK){ host.innerHTML=`<div class="hint">Supabase niet ingesteld</div>`; return; }
+  const {data,error}=await sb.from("kast_sjablonen").select("*").order("created_at",{ascending:false});
+  if(error){ host.innerHTML=`<div class="hint">Sjablonen laden mislukt</div>`; return; }
+  customTemplates=data||[];
+  renderCustomButtons();
+}
+function renderCustomButtons(){
+  const host=document.getElementById("customBtns");
+  host.innerHTML="";
+  if(!customTemplates.length){ host.innerHTML=`<div class="hint">Nog geen eigen sjablonen.</div>`; return; }
+  customTemplates.forEach(t=>{
+    const row=document.createElement("div");
+    row.style.display="flex"; row.style.gap="6px";
+    const b=document.createElement("button");
+    b.textContent=t.name; b.style.flex="1";
+    b.onclick=()=>applyCustomTemplate(t);
+    const x=document.createElement("button");
+    x.textContent="×"; x.className="danger"; x.style.flex="0 0 auto"; x.style.padding="6px 10px";
+    x.title="Sjabloon verwijderen";
+    x.onclick=(e)=>{ e.stopPropagation(); deleteTemplate(t); };
+    row.appendChild(b); row.appendChild(x);
+    host.appendChild(row);
+  });
+}
+function applyCustomTemplate(t){
+  const keepName=M.name;
+  // sjabloon bevat de indeling; buitenmaat van huidige kast aanhouden
+  const d=JSON.parse(JSON.stringify(t.data));
+  M = { ...d, W:M.W, H:M.H, D:M.D, T:M.T, SOK:M.SOK,
+        sheetW:M.sheetW, sheetH:M.sheetH, sheetPrice:M.sheetPrice };
+  if(keepName && currentId) M.name=keepName;
+  selRow=M.rows.length?0:null;
+  syncDimsToInputs(); render(); renderRows(); renderCut(); markDirty();
+}
+async function saveCurrentAsTemplate(){
+  if(!supaOK){ alert("Supabase is niet ingesteld. Vul je gegevens in bovenin het bestand."); return; }
+  const nm=prompt("Naam voor dit sjabloon:", M.name||"Mijn sjabloon");
+  if(nm===null) return;
+  // alleen de indeling bewaren, niet de buitenmaat (die wordt bij toepassen overschreven)
+  const tplData={ rows: JSON.parse(JSON.stringify(M.rows)) };
+  const {error}=await sb.from("kast_sjablonen").insert({ name:nm, data:tplData });
+  if(error){ alert("Opslaan sjabloon mislukt: "+error.message); return; }
+  await loadTemplates();
+}
+async function deleteTemplate(t){
+  if(!confirm(`Sjabloon "${t.name}" verwijderen?`)) return;
+  const {error}=await sb.from("kast_sjablonen").delete().eq("id",t.id);
+  if(error){ alert("Verwijderen mislukt: "+error.message); return; }
+  await loadTemplates();
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+syncDimsToInputs();
+bindDims();
+renderVariantButtons();
+document.getElementById("saveTemplate").onclick=saveCurrentAsTemplate;
+render();
+renderRows();
+renderCut();
+loadDesignList();
+loadTemplates();
+</script>
+</body>
+</html>
