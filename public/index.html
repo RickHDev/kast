@@ -565,16 +565,16 @@ function renderCut(){
     `<table><thead><tr><th>Onderdeel</th><th class="num">B</th><th class="num">H</th><th class="num">Aantal</th></tr></thead><tbody>${rows}</tbody></table>
      <div class="hint">Maten in cm. B×H per stuk. Diepte ${M.D} cm. Houd rekening met zaagverlies.</div>`;
 
-  // area + sheets (simple area-based estimate with 15% waste)
+  // area + sheets (simple area-based estimate with 10% waste)
   let area=0;
   parts.forEach(p=> area += (p.w*p.h*p.qty)/10000); // m2
   const sheetArea = (M.sheetW*M.sheetH)/10000;
-  const withWaste = area*1.15;
+  const withWaste = area*1.10;
   const sheets = Math.ceil(withWaste/sheetArea);
   const cost = sheets*M.sheetPrice;
   document.getElementById("costbox").innerHTML = `
     <div class="kv"><span>Netto plaatoppervlak</span><b>${area.toFixed(2)} m²</b></div>
-    <div class="kv"><span>Incl. 15% zaagverlies</span><b>${withWaste.toFixed(2)} m²</b></div>
+    <div class="kv"><span>Incl. 10% zaagverlies</span><b>${withWaste.toFixed(2)} m²</b></div>
     <div class="kv"><span>Plaat ${M.sheetW}×${M.sheetH} = ${sheetArea.toFixed(2)} m²</span><b></b></div>
     <div class="kv tot"><span>Platen nodig</span><b>${sheets} st</b></div>
     <div class="kv tot"><span>Ruwe kosten OSB</span><b>€ ${cost.toFixed(2)}</b></div>
