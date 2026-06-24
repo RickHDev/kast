@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kastbouwer - ThuysVers</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg:#f4f1ea; --ink:#2b2b2b; --line:#3a3a3a; --panel:#c9bda6;
@@ -169,19 +168,21 @@
 
 <script>
 /* ============================================================
-   CONFIG - vul je Supabase gegevens hier in
+   OPSLAG - Cloudflare D1 via Pages Functions (/api/*)
+   Geen configuratie nodig: de API draait op dezelfde site.
    ============================================================ */
-const SUPABASE_URL = "JOUW_SUPABASE_URL";      // bv https://xxxx.supabase.co
-const SUPABASE_ANON_KEY = "JOUW_SUPABASE_ANON_KEY";
-
-let sb = null;
-let supaOK = false;
-try {
-  if (SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20) {
-    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    supaOK = true;
+async function api(path, opts){
+  const res = await fetch("/api/"+path, {
+    headers: {"content-type":"application/json"},
+    ...opts
+  });
+  if(!res.ok){
+    let msg = res.status+"";
+    try { const j = await res.json(); if(j && j.error) msg = j.error; } catch(e){}
+    throw new Error(msg);
   }
-} catch(e){ supaOK = false; }
+  return res.status===204 ? null : res.json();
+}
 
 /* ============================================================
    MODEL
@@ -589,25 +590,26 @@ function downloadCsv(){
 }
 
 /* ============================================================
-   SUPABASE STORAGE
+   OPSLAG (Cloudflare D1)
    ============================================================ */
 function setSaveState(t){ document.getElementById("saveState").textContent=t; }
 function markDirty(){ dirty=true; setSaveState("niet opgeslagen"); }
 
 async function loadDesignList(){
   const picker=document.getElementById("designPicker");
-  if(!supaOK){ picker.innerHTML=`<option>Supabase niet ingesteld</option>`; setSaveState("offline"); return; }
-  const {data,error}=await sb.from("kast_ontwerpen").select("id,name").order("updated_at",{ascending:false});
-  if(error){ setSaveState("laden mislukt"); return; }
-  designs=data||[];
+  try {
+    designs = await api("designs");
+  } catch(e){
+    picker.innerHTML=`<option>laden mislukt</option>`; setSaveState("laden mislukt"); return;
+  }
   picker.innerHTML = designs.map(d=>`<option value="${d.id}">${d.name}</option>`).join("") || `<option value="">(geen ontwerpen)</option>`;
   if(designs.length){ picker.value=designs[0].id; await loadDesign(designs[0].id); }
 }
 
 async function loadDesign(id){
-  if(!supaOK) return;
-  const {data,error}=await sb.from("kast_ontwerpen").select("*").eq("id",id).single();
-  if(error||!data){ return; }
+  let data;
+  try { data = await api("designs/"+id); } catch(e){ return; }
+  if(!data){ return; }
   M = data.data; currentId=data.id; dirty=false;
   selRow = M.rows.length?0:null;
   syncDimsToInputs(); render(); renderRows(); renderCut();
@@ -615,14 +617,15 @@ async function loadDesign(id){
 }
 
 async function saveDesign(){
-  if(!supaOK){ alert("Supabase is niet ingesteld. Vul SUPABASE_URL en SUPABASE_ANON_KEY in bovenin het bestand."); return; }
   setSaveState("opslaan...");
-  const payload={ name:M.name||"Mijn kast", data:M, updated_at:new Date().toISOString() };
-  let res;
-  if(currentId){ res=await sb.from("kast_ontwerpen").update(payload).eq("id",currentId).select().single(); }
-  else { res=await sb.from("kast_ontwerpen").insert(payload).select().single(); }
-  if(res.error){ setSaveState("fout: "+res.error.message); return; }
-  currentId=res.data.id; dirty=false; setSaveState("opgeslagen "+new Date().toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}));
+  const payload={ name:M.name||"Mijn kast", data:M };
+  try {
+    let res;
+    if(currentId){ res=await api("designs/"+currentId, {method:"PUT", body:JSON.stringify(payload)}); }
+    else { res=await api("designs", {method:"POST", body:JSON.stringify(payload)}); }
+    currentId=res.id;
+  } catch(e){ setSaveState("fout: "+e.message); return; }
+  dirty=false; setSaveState("opgeslagen "+new Date().toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}));
   await loadDesignList();
   document.getElementById("designPicker").value=currentId;
 }
@@ -691,10 +694,8 @@ let customTemplates = []; // {id,name,data}
 
 async function loadTemplates(){
   const host=document.getElementById("customBtns");
-  if(!supaOK){ host.innerHTML=`<div class="hint">Supabase niet ingesteld</div>`; return; }
-  const {data,error}=await sb.from("kast_sjablonen").select("*").order("created_at",{ascending:false});
-  if(error){ host.innerHTML=`<div class="hint">Sjablonen laden mislukt</div>`; return; }
-  customTemplates=data||[];
+  try { customTemplates = await api("templates"); }
+  catch(e){ host.innerHTML=`<div class="hint">Sjablonen laden mislukt</div>`; return; }
   renderCustomButtons();
 }
 function renderCustomButtons(){
@@ -726,19 +727,18 @@ function applyCustomTemplate(t){
   syncDimsToInputs(); render(); renderRows(); renderCut(); markDirty();
 }
 async function saveCurrentAsTemplate(){
-  if(!supaOK){ alert("Supabase is niet ingesteld. Vul je gegevens in bovenin het bestand."); return; }
   const nm=prompt("Naam voor dit sjabloon:", M.name||"Mijn sjabloon");
   if(nm===null) return;
   // alleen de indeling bewaren, niet de buitenmaat (die wordt bij toepassen overschreven)
   const tplData={ rows: JSON.parse(JSON.stringify(M.rows)) };
-  const {error}=await sb.from("kast_sjablonen").insert({ name:nm, data:tplData });
-  if(error){ alert("Opslaan sjabloon mislukt: "+error.message); return; }
+  try { await api("templates", {method:"POST", body:JSON.stringify({name:nm, data:tplData})}); }
+  catch(e){ alert("Opslaan sjabloon mislukt: "+e.message); return; }
   await loadTemplates();
 }
 async function deleteTemplate(t){
   if(!confirm(`Sjabloon "${t.name}" verwijderen?`)) return;
-  const {error}=await sb.from("kast_sjablonen").delete().eq("id",t.id);
-  if(error){ alert("Verwijderen mislukt: "+error.message); return; }
+  try { await api("templates/"+t.id, {method:"DELETE"}); }
+  catch(e){ alert("Verwijderen mislukt: "+e.message); return; }
   await loadTemplates();
 }
 
